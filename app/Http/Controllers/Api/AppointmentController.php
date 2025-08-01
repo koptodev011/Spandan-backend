@@ -16,6 +16,57 @@ class AppointmentController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
+    /**
+     * Get appointments by date
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function getByDate(Request $request)
+    {
+        try {
+            // Validate the request
+            $validator = Validator::make($request->all(), [
+                'date' => 'required|date_format:Y-m-d',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Validation error',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $date = $request->input('date');
+            
+            // Query appointments for the given date with patient relationship
+            $appointments = Appointment::with(['patient' => function($query) {
+                    $query->select('id', 'full_name', 'phone');
+                }])
+                ->where('date', $date)
+                ->get();
+                        
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $appointments
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch appointments',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get all appointments with optional filtering and pagination
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
     public function index(Request $request)
     {
         try {

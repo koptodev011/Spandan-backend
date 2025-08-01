@@ -17,14 +17,11 @@ class Patient extends Model
         'emergency_contact',
         'medical_history',
         'current_medication',
-        'allergies',
-        'appointment_date',
-        'appointment_time',
+        'allergies'
     ];
 
     protected $casts = [
-        'appointment_date' => 'date',
-        'appointment_time' => 'datetime',
+        // Add any necessary date casts here
     ];
 
     /**

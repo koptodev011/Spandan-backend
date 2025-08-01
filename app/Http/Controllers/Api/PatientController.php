@@ -76,6 +76,7 @@ class PatientController extends Controller
     {
         // Validate the request data
         $validator = Validator::make($request->all(), [
+            // Patient fields
             'full_name' => 'required|string|max:255',
             'age' => 'required|integer|min:0|max:120',
             'gender' => 'required|in:male,female,other',
@@ -86,8 +87,13 @@ class PatientController extends Controller
             'medical_history' => 'nullable|string',
             'current_medication' => 'nullable|string',
             'allergies' => 'nullable|string',
+            
+            // Appointment fields
             'appointment_date' => 'required|date',
             'appointment_time' => 'required|date_format:H:i',
+            'appointment_type' => 'required|in:in_person,remote',
+            'duration_minutes' => 'required|integer|min:1|max:240',
+            'appointment_note' => 'nullable|string',
         ]);
 
         // If validation fails, return error response
@@ -100,15 +106,49 @@ class PatientController extends Controller
         }
 
         try {
-            // Create a new patient record
-            $patient = Patient::create($request->all());
+            // Start database transaction
+            return \DB::transaction(function () use ($request) {
+                // Create patient record
+                $patientData = [
+                    'full_name' => $request->full_name,
+                    'age' => $request->age,
+                    'gender' => $request->gender,
+                    'phone' => $request->phone,
+                    'email' => $request->email,
+                    'address' => $request->address,
+                    'emergency_contact' => $request->emergency_contact,
+                    'medical_history' => $request->medical_history,
+                    'current_medication' => $request->current_medication,
+                    'allergies' => $request->allergies,
+                ];
+                
+                $patient = Patient::create($patientData);
 
-            // Return success response with the created patient data
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Patient created successfully',
-                'data' => $patient,
-            ], 201);
+                // Create appointment record
+                $appointment = new \App\Models\Appointment([
+                    'patient_id' => $patient->id,
+                    'date' => $request->appointment_date,
+                    'time' => $request->appointment_time,
+                    'appointment_type' => $request->appointment_type,
+                    'duration_minutes' => $request->duration_minutes,
+                    'note' => $request->appointment_note,
+                ]);
+                
+                $patient->appointments()->save($appointment);
+
+                // Load the appointment relationship for the response
+                $patient->load('appointments');
+
+                // Return success response with both patient and appointment data
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Patient and appointment created successfully',
+                    'data' => [
+                        'patient' => $patient,
+                        'appointment' => $patient->appointments->first()
+                    ],
+                ], 201);
+            });
         } catch (\Exception $e) {
             // Return error response if something goes wrong
             return response()->json([
