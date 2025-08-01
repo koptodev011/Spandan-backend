@@ -23,6 +23,24 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
+// Debug route - remove this in production
+Route::get('/debug/appointments', function() {
+    try {
+        $appointments = \App\Models\Appointment::all();
+        return response()->json([
+            'status' => 'success',
+            'count' => $appointments->count(),
+            'appointments' => $appointments->toArray()
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ], 500);
+    }
+});
+
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -37,6 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Appointment routes
     Route::prefix('appointments')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\AppointmentController::class, 'index']);
+        Route::get('/by-date', [\App\Http\Controllers\Api\AppointmentController::class, 'getByDate']);
         Route::get('/today', [\App\Http\Controllers\Api\AppointmentController::class, 'today']);
         Route::get('/patient/{id}', [\App\Http\Controllers\Api\AppointmentController::class, 'show']);
         Route::post('/', [\App\Http\Controllers\Api\AppointmentController::class, 'store']);
