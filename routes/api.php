@@ -63,12 +63,23 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Session routes
     Route::prefix('sessions')->group(function () {
+        // List all sessions
         Route::get('/', [\App\Http\Controllers\Api\PatientSessionController::class, 'index']);
+        
+        // Create new session
         Route::post('/', [\App\Http\Controllers\Api\PatientSessionController::class, 'store']);
-        Route::get('/{patientSession}', [\App\Http\Controllers\Api\PatientSessionController::class, 'show']);
+        
+        // Get session by ID - must come before other routes with dynamic parameters
+        Route::get('/{id}', [\App\Http\Controllers\Api\PatientSessionController::class, 'show']);
+        
+        // Get completed sessions with filters
+        Route::get('/completed/list', [\App\Http\Controllers\Api\PatientSessionController::class, 'getCompletedSessions']);
+        
+        // Other session routes
         Route::put('/{patientSession}', [\App\Http\Controllers\Api\PatientSessionController::class, 'update']);
         Route::post('/{session}/complete', [\App\Http\Controllers\Api\PatientSessionController::class, 'completeSession']);
         Route::delete('/{patientSession}', [\App\Http\Controllers\Api\PatientSessionController::class, 'destroy']);
         Route::post('/{patientSession}/start', [\App\Http\Controllers\Api\PatientSessionController::class, 'start']);
+        Route::get('/patient/{patientId}/history', [\App\Http\Controllers\Api\PatientSessionController::class, 'getPatientSessionHistory']);
     });
 });
