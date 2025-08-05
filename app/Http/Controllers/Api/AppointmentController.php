@@ -130,6 +130,35 @@ class AppointmentController extends Controller
     }
 
     /**
+     * Get all upcoming appointments
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function upcoming()
+    {
+        try {
+            $today = now()->toDateString();
+            
+            $appointments = Appointment::with('patient')
+                ->where('date', '>=', $today)
+                ->orderBy('date', 'asc')
+                ->orderBy('time', 'asc')
+                ->get();
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $appointments
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch upcoming appointments',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Store a newly created appointment in storage.
      *
      * @param  \Illuminate\Http\Request  $request
@@ -236,18 +265,118 @@ class AppointmentController extends Controller
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update the specified appointment in storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  string  $id  Appointment ID
+     * @return \Illuminate\Http\Response
      */
     public function update(Request $request, string $id)
     {
-        //
+        // Find the appointment
+        $appointment = Appointment::find($id);
+        
+        if (!$appointment) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Appointment not found',
+            ], 404);
+        }
+
+        // Validate the request data
+        $validator = Validator::make($request->all(), [
+            'patient_id' => 'sometimes|required|exists:patients,id',
+            'date' => 'sometimes|required|date',
+            'time' => 'sometimes|required|date_format:H:i',
+            'appointment_type' => 'sometimes|required|string|max:100',
+            'duration_minutes' => 'sometimes|required|integer|min:1|max:480',
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        // If validation fails, return error response
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation Error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Check for appointment conflicts (excluding the current appointment)
+        if ($request->has('date') && $request->has('time') && $request->has('duration_minutes')) {
+            $conflictingAppointment = Appointment::where('id', '!=', $id)
+                ->where('date', $request->date)
+                ->where(function($query) use ($request) {
+                    $query->whereBetween('time', [
+                        $request->time,
+                        date('H:i', strtotime($request->time) + ($request->duration_minutes * 60) - 1)
+                    ]);
+                })
+                ->exists();
+
+            if ($conflictingAppointment) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'There is already another appointment scheduled at this time',
+                ], 409);
+            }
+        }
+
+        try {
+            // Update the appointment
+            $appointment->fill($request->all());
+            $appointment->save();
+
+            // Load the patient relationship for the response
+            $appointment->load('patient');
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Appointment updated successfully',
+                'data' => $appointment
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to update appointment',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Remove the specified appointment from storage.
+     *
+     * @param  string  $id  Appointment ID
+     * @return \Illuminate\Http\Response
      */
     public function destroy(string $id)
     {
-        //
+        try {
+            // Find the appointment
+            $appointment = Appointment::find($id);
+            
+            if (!$appointment) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Appointment not found',
+                ], 404);
+            }
+            
+            // Delete the appointment
+            $appointment->delete();
+            
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Appointment deleted successfully',
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to delete appointment',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

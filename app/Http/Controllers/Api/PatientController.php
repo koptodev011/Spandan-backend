@@ -72,6 +72,53 @@ class PatientController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
+    /**
+     * Search patients by name
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function search(Request $request)
+    {
+        try {
+            $request->validate([
+                'query' => 'required|string|min:2|max:100',
+                'limit' => 'sometimes|integer|min:1|max:50',
+            ]);
+
+            $query = $request->input('query');
+            $limit = $request->input('limit', 10);
+
+            $patients = Patient::where(function($q) use ($query) {
+                    $q->where('full_name', 'like', "%{$query}%")
+                      ->orWhere('email', 'like', "%{$query}%")
+                      ->orWhere('phone', 'like', "%{$query}%");
+                })
+                ->select('id', 'full_name', 'email', 'phone')
+                ->limit($limit)
+                ->get();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Patients found',
+                'data' => $patients
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to search patients',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Store a newly created patient in storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
     public function store(Request $request)
     {
         // Validate the request data
@@ -80,6 +127,8 @@ class PatientController extends Controller
             'full_name' => 'required|string|max:255',
             'age' => 'required|integer|min:0|max:120',
             'gender' => 'required|in:male,female,other',
+            'marital_status' => 'nullable|string|max:50',
+            'profession' => 'nullable|string|max:100',
             'phone' => 'required|string|max:20',
             'email' => 'required|string|email|max:255|unique:patients,email',
             'address' => 'required|string',
@@ -113,6 +162,8 @@ class PatientController extends Controller
                     'full_name' => $request->full_name,
                     'age' => $request->age,
                     'gender' => $request->gender,
+                    'marital_status' => $request->marital_status,
+                    'profession' => $request->profession,
                     'phone' => $request->phone,
                     'email' => $request->email,
                     'address' => $request->address,

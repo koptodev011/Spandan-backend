@@ -3,6 +3,8 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\ReportController;
 
 /*
 |--------------------------------------------------------------------------
@@ -46,10 +48,46 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
     
+    // Report routes
+    Route::prefix('reports')->group(function () {
+        // Payment reports
+        Route::get('/payments/summary', [ReportController::class, 'paymentSummary']);
+        Route::get('/payments/detailed', [ReportController::class, 'paymentDetailed']);
+        
+        // Session reports
+        Route::get('/sessions/completed', [ReportController::class, 'completedSessions']);
+        Route::get('/patients/{patientId}/session-stats', [ReportController::class, 'patientSessionStats']);
+        
+        // Patient reports
+        Route::get('/patients', [ReportController::class, 'patientReports']);
+        Route::get('/patients/summary', [ReportController::class, 'patientSessionStats']);
+        
+        // Appointment reports
+        Route::get('/appointments', [ReportController::class, 'appointmentReports']);
+        
+        // General statistics
+        Route::get('/statistics', [ReportController::class, 'generalStatistics']);
+    });
+    
+    // Payment management routes
+    Route::prefix('payments')->group(function () {
+        Route::get('/', [PaymentController::class, 'index']);
+        Route::get('/summary', [PaymentController::class, 'summary']);
+        Route::get('/categories', [PaymentController::class, 'categories']);
+        Route::post('/', [PaymentController::class, 'store']);
+        Route::get('/{id}', [PaymentController::class, 'show']);
+        Route::put('/{id}', [PaymentController::class, 'update']);
+        Route::delete('/{id}', [PaymentController::class, 'destroy']);
+    });
+    
     // Patient routes
     Route::prefix('patients')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\PatientController::class, 'index']);
+        Route::get('/search', [\App\Http\Controllers\Api\PatientController::class, 'search']);
         Route::post('/', [\App\Http\Controllers\Api\PatientController::class, 'store']);
+        
+        // Get patient sessions
+        Route::get('/{patient}/sessions', [\App\Http\Controllers\Api\PatientSessionController::class, 'getSessionsByPatient']);
     });
     
     // Appointment routes
@@ -57,8 +95,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\AppointmentController::class, 'index']);
         Route::get('/by-date', [\App\Http\Controllers\Api\AppointmentController::class, 'getByDate']);
         Route::get('/today', [\App\Http\Controllers\Api\AppointmentController::class, 'today']);
+        Route::get('/upcoming', [\App\Http\Controllers\Api\AppointmentController::class, 'upcoming']);
         Route::get('/patient/{id}', [\App\Http\Controllers\Api\AppointmentController::class, 'show']);
         Route::post('/', [\App\Http\Controllers\Api\AppointmentController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\AppointmentController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\AppointmentController::class, 'destroy']);
     });
     
     // Session routes

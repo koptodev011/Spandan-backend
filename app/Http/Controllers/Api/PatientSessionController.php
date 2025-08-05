@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class PatientSessionController extends Controller
 {
@@ -20,6 +21,58 @@ class PatientSessionController extends Controller
      *
      * @param int $patientId
      * @return \Illuminate\Http\JsonResponse
+     */
+    /**
+     * Get sessions by patient ID with optional filters
+     *
+     * @param int $patientId
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function getSessionsByPatient($patientId, Request $request): JsonResponse
+    {
+        try {
+            $query = PatientSession::where('patient_id', $patientId)
+                ->with(['notes', 'medicines.images'])
+                ->orderBy('started_at', 'desc');
+
+            // Apply status filter if provided
+            if ($request->has('status')) {
+                $query->where('status', $request->status);
+            }
+
+            // Apply date range filter if provided
+            if ($request->has('start_date') && $request->has('end_date')) {
+                $startDate = Carbon::parse($request->start_date)->startOfDay();
+                $endDate = Carbon::parse($request->end_date)->endOfDay();
+                $query->whereBetween('started_at', [$startDate, $endDate]);
+            }
+
+            // Apply pagination or get all results
+            $perPage = $request->input('per_page', 15);
+            $sessions = $request->has('paginate') && $request->paginate === 'false'
+                ? $query->get()
+                : $query->paginate($perPage);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Sessions retrieved successfully',
+                'data' => $sessions
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to retrieve sessions: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get patient session history and statistics
+     *
+     * @param int $patientId
+     * @return JsonResponse
      */
     public function getPatientSessionHistory($patientId): JsonResponse
     {
