@@ -22,6 +22,52 @@ class AppointmentController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
+    /**
+     * Get today's appointments for a patient where time is current or later
+     *
+     * @param  int  $patientId
+     * @return \Illuminate\Http\Response
+     */
+   
+   
+   
+     public function getTodaysUpcomingAppointment(Request $request)
+    {
+        $appointment = Appointment::where('patient_id', $request->patient_id)
+            ->where('date', '>=', now()->toDateString())
+            ->first();
+    
+        if (!$appointment) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No appointment found'
+            ]);
+        }
+        $appointmentTime = \Carbon\Carbon::parse($appointment->time);
+        $now = now();
+        if (!$now->lessThan($appointmentTime)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Not allowed'
+            ]);
+        }
+        return response()->json([
+            'status' => 'success',
+            'data' => $appointment
+        ]);
+    }
+
+
+
+    
+    
+
+    /**
+     * Get appointments by date
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
     public function getByDate(Request $request)
     {
         try {
@@ -130,30 +176,105 @@ class AppointmentController extends Controller
     }
 
     /**
+     * Get current appointment for a patient (for current date and time)
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function getCurrentAppointment(Request $request)
+    {
+        try {
+            // Validate the request
+            $validator = Validator::make($request->all(), [
+                'patient_id' => 'required|exists:patients,id',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Validation error',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $currentDate = now()->toDateString();
+            $currentTime = now()->format('H:i:s');
+            $patientId = $request->input('patient_id');
+            
+            // Find the appointment for the current patient, date, and time
+            $appointment = Appointment::with('patient')
+                ->where('patient_id', $patientId)
+                ->where('date', $currentDate)
+                ->where('time', '<=', $currentTime)
+                ->orderBy('time', 'desc')
+                ->first();
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $appointment
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch current appointment',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Get all upcoming appointments
+     *
+     * @return \Illuminate\Http\Response
+     */
+    /**
+     * Get all upcoming appointments with proper time validation
+     * Returns only future appointments (including today's future time slots)
      *
      * @return \Illuminate\Http\Response
      */
     public function upcoming()
     {
         try {
-            $today = now()->toDateString();
+            $now = now();
+            $currentDate = $now->toDateString();
+            $currentTime = $now->format('H:i:s');
             
             $appointments = Appointment::with('patient')
-                ->where('date', '>=', $today)
+                ->where(function($query) use ($currentDate, $currentTime) {
+                    // Get future dates
+                    $query->where('date', '>', $currentDate)
+                        // OR today's date with future times
+                        ->orWhere(function($q) use ($currentDate, $currentTime) {
+                            $q->where('date', $currentDate)
+                              ->where('time', '>=', $currentTime);
+                        });
+                })
+                // Additional validation to ensure we don't get past appointments
+                ->where('date', '>=', $currentDate)
+                ->where(function($query) use ($currentDate, $currentTime) {
+                    $query->where('date', '>', $currentDate)
+                          ->orWhere('time', '>=', $currentTime);
+                })
+                // Exclude cancelled appointments
+                ->where('status', '!=', 'cancelled')
+                // Order by soonest first
                 ->orderBy('date', 'asc')
                 ->orderBy('time', 'asc')
                 ->get();
 
             return response()->json([
                 'status' => 'success',
+                'current_datetime' => $now->toDateTimeString(),
                 'data' => $appointments
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to fetch upcoming appointments',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => config('app.debug') ? $e->getTraceAsString() : null
             ], 500);
         }
     }

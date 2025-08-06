@@ -95,7 +95,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\AppointmentController::class, 'index']);
         Route::get('/by-date', [\App\Http\Controllers\Api\AppointmentController::class, 'getByDate']);
         Route::get('/today', [\App\Http\Controllers\Api\AppointmentController::class, 'today']);
+        Route::get('/current', [\App\Http\Controllers\Api\AppointmentController::class, 'getCurrentAppointment']);
         Route::get('/upcoming', [\App\Http\Controllers\Api\AppointmentController::class, 'upcoming']);
+        Route::get('/todays-upcoming', [\App\Http\Controllers\Api\AppointmentController::class, 'getTodaysUpcomingAppointment']);
         Route::get('/patient/{id}', [\App\Http\Controllers\Api\AppointmentController::class, 'show']);
         Route::post('/', [\App\Http\Controllers\Api\AppointmentController::class, 'store']);
         Route::put('/{id}', [\App\Http\Controllers\Api\AppointmentController::class, 'update']);
