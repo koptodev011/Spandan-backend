@@ -8,10 +8,12 @@ use App\Models\Patient;
 use App\Models\SessionNote;
 use App\Models\SessionMedicine;
 use App\Models\MedicineImage;
+use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
 
 class PatientSessionController extends Controller
@@ -302,21 +304,138 @@ class PatientSessionController extends Controller
     {
         return DB::transaction(function () use ($request, $id) {
             // Find and update the session
-            $session = PatientSession::findOrFail($id);
+            $session = PatientSession::with('patient')->findOrFail($id);
             $session->status = 'completed';
             $session->ended_at = now();
             $session->save();
+
+            // Handle voice recording upload
+            $voiceNotesPath = null;
+            \Log::info('=== Starting voice recording processing ===');
+            \Log::info('Request files: ' . json_encode($request->allFiles()));
+            \Log::info('Request data keys: ' . json_encode(array_keys($request->all())));
+            
+            try {
+                // Check for file upload
+                $file = null;
+                if ($request->hasFile('voice_recording')) {
+                    $file = $request->file('voice_recording');
+                } elseif ($request->hasFile('voice_notes_path')) {
+                    $file = $request->file('voice_notes_path');
+                }
+                
+                if ($file) {
+                    \Log::info('Processing voice recording file...');
+                    \Log::info('File details', [
+                        'originalName' => $file->getClientOriginalName(),
+                        'size' => $file->getSize(),
+                        'mimeType' => $file->getMimeType(),
+                        'isValid' => $file->isValid()
+                    ]);
+                    
+                    if ($file->isValid()) {
+                        // Ensure directory exists
+                        $directory = 'voice_recordings/' . date('Y/m/d');
+                        if (!Storage::disk('public')->exists($directory)) {
+                            Storage::disk('public')->makeDirectory($directory, 0755, true);
+                            \Log::info('Created directory: ' . $directory);
+                        }
+                        
+                        // Store the file with a unique name
+                        $filename = 'voice_' . uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                        $path = $file->storeAs($directory, $filename, 'public');
+                        
+                        if ($path) {
+                            $voiceNotesPath = $path;
+                            \Log::info('Voice recording stored successfully', [
+                                'path' => $path,
+                                'full_path' => storage_path('app/public/' . $path),
+                                'url' => asset('storage/' . $path)
+                            ]);
+                        } else {
+                            \Log::error('Failed to store voice recording file');
+                        }
+                    } else {
+                        \Log::error('Invalid voice recording file', [
+                            'error' => $file->getError(),
+                            'errorMessage' => $file->getErrorMessage()
+                        ]);
+                    }
+                } elseif ($request->filled('voice_recording_base64') || $request->filled('voice_notes_path')) {
+                    \Log::info('Processing base64 voice recording data...');
+                    $base64Audio = $request->input('voice_recording_base64') ?? $request->input('voice_notes_path');
+                    
+                    // If voice_notes_path is a JSON string, decode it
+                    if (is_string($base64Audio) && json_decode($base64Audio) !== null) {
+                        $base64Audio = json_decode($base64Audio, true);
+                        if (is_array($base64Audio) && isset($base64Audio['data'])) {
+                            $base64Audio = $base64Audio['data'];
+                        }
+                    }
+                    
+                    // Remove data URL prefix if present
+                    if (strpos($base64Audio, ';base64,') !== false) {
+                        list(, $base64Audio) = explode(';', $base64Audio);
+                        list(, $base64Audio) = explode(',', $base64Audio);
+                    }
+                    
+                    $audioData = base64_decode($base64Audio, true);
+                    
+                    if ($audioData === false) {
+                        \Log::error('Failed to decode base64 audio data');
+                    } else {
+                        $directory = 'voice_recordings/' . date('Y/m/d');
+                        if (!Storage::disk('public')->exists($directory)) {
+                            Storage::disk('public')->makeDirectory($directory, 0755, true);
+                        }
+                        
+                        $filename = 'voice_' . uniqid() . '_' . time() . '.mp3';
+                        $path = $directory . '/' . $filename;
+                        
+                        $saved = Storage::disk('public')->put($path, $audioData);
+                        
+                        if ($saved) {
+                            $voiceNotesPath = $path;
+                            \Log::info('Base64 voice recording saved successfully', [
+                                'path' => $path,
+                                'size' => strlen($audioData) . ' bytes'
+                            ]);
+                        } else {
+                            \Log::error('Failed to save base64 audio data to storage');
+                        }
+                    }
+                } else {
+                    \Log::info('No voice recording provided in the request');
+                }
+            } catch (\Exception $e) {
+                \Log::error('Error processing voice recording: ' . $e->getMessage(), [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+            }
     
+            // Get medicine price from request
+            $medicinePrice = $request->input('medicine_price', 0);
+    
+            // Debug log the voice_notes_path before saving
+            \Log::info('Before saving - voice_notes_path: ' . ($voiceNotesPath ?? 'NULL'));
+            \Log::info('Request data: ' . json_encode($request->all()));
+            
             // Create and save session notes
             $sessionNotes = SessionNote::create([
                 'session_id' => $session->id,
                 'general_notes' => $request->input('general_notes'),
                 'physical_health_notes' => $request->input('physical_health_notes'),
                 'mental_health_notes' => $request->input('mental_health_notes'),
-                'voice_notes_path' => $request->input('voice_notes_path')
+                'voice_notes_path' => $voiceNotesPath,
+                'medicine_price' => $medicinePrice
             ]);
+            
+            // Debug log after saving
+            \Log::info('After saving - voice_notes_path in DB: ' . ($sessionNotes->voice_notes_path ?? 'NULL'));
     
-            // Save medicine details first
+            // Save medicine details
             $sessionMedicine = SessionMedicine::create([
                 'session_id' => $session->id,
                 'medicine_notes' => $request->input('medicine_notes', '')
@@ -345,6 +464,36 @@ class PatientSessionController extends Controller
                     }
                 }
             }
+            
+            // Create payment record for medicine if price is greater than 0
+            $payment = null;
+            // Convert medicine_price to float and ensure it's a valid number
+            $medicinePrice = is_numeric($medicinePrice) ? (float)$medicinePrice : 0;
+            
+            if ($medicinePrice > 0) {
+                try {
+                    $payment = Payment::create([
+                        'patient_id' => $session->patient_id,
+                        'amount' => $medicinePrice,
+                        'description' => 'Medicine charges for session #' . $session->id,
+                        'category' => 'medicine',
+                        'date' => now(),
+                        'payment_method' => 'cash',
+                        'status' => 'completed',
+                        'type' => 'income',
+                        'notes' => 'Medicine charges for ' . ($session->patient->full_name ?? 'patient')
+                    ]);
+                    \Log::info('Payment created successfully', ['payment_id' => $payment->id, 'amount' => $medicinePrice]);
+                } catch (\Exception $e) {
+                    \Log::error('Failed to create payment: ' . $e->getMessage(), [
+                        'patient_id' => $session->patient_id,
+                        'amount' => $medicinePrice,
+                        'error' => $e->getTraceAsString()
+                    ]);
+                }
+            } else {
+                \Log::info('No payment created - medicine price is zero or invalid', ['price' => $request->input('medicine_price')]);
+            }
     
             // Get the uploaded images for the response
             $images = DB::table('medicine_images')
@@ -358,7 +507,8 @@ class PatientSessionController extends Controller
                     'session' => $session->only(['id', 'patient_id', 'status', 'started_at', 'ended_at']),
                     'notes' => $sessionNotes,
                     'medicine' => array_merge($sessionMedicine->toArray(), ['images' => $images]),
-                    'uploaded_images' => $uploadedImages
+                    'uploaded_images' => $uploadedImages,
+                    'payment' => $payment
                 ]
             ]);
         });
