@@ -12,6 +12,7 @@ class Appointment extends Model
         'date',
         'time',
         'appointment_type',
+        'session_purpose',
         'duration_minutes',
         'note',
     ];

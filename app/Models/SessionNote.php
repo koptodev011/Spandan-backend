@@ -12,6 +12,7 @@ class SessionNote extends Model
         'general_notes',
         'physical_health_notes',
         'mental_health_notes',
+        'medicine_price',
         'voice_notes_path'
     ];
 

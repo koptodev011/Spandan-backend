@@ -142,6 +142,7 @@ class PatientController extends Controller
             'appointment_time' => 'required|date_format:H:i',
             'appointment_type' => 'required|in:in_person,remote',
             'duration_minutes' => 'required|integer|min:1|max:240',
+            'session_purpose' => 'required|string|in:initial-consultation,follow-up,therapy,medication-review,crisis-intervention,assessment,other',
             'appointment_note' => 'nullable|string',
         ]);
 
@@ -182,6 +183,7 @@ class PatientController extends Controller
                     'time' => $request->appointment_time,
                     'appointment_type' => $request->appointment_type,
                     'duration_minutes' => $request->duration_minutes,
+                    'session_purpose' => $request->session_purpose,
                     'note' => $request->appointment_note,
                 ]);
                 

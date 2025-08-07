@@ -293,6 +293,7 @@ class AppointmentController extends Controller
             'date' => 'required|date|after_or_equal:today',
             'time' => 'required|date_format:H:i',
             'appointment_type' => 'required|string|max:100',
+            'session_purpose' => 'required|string|max:255',
             'duration_minutes' => 'required|integer|min:1|max:480', // Max 8 hours
             'note' => 'nullable|string|max:1000',
         ]);
