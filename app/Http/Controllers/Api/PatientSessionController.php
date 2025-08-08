@@ -444,25 +444,51 @@ class PatientSessionController extends Controller
             // Handle multiple image uploads
             $uploadedImages = [];
             if ($request->hasFile('medicine_images')) {
-                foreach ($request->file('medicine_images') as $image) {
-                    if ($image->isValid()) {
-                        $path = $image->store('medicine_images', 'public');
-                        
-                        // Store image path in medicine_images table
-                        $imageId = DB::table('medicine_images')->insertGetId([
-                            'session_medicine_id' => $sessionMedicine->id,
-                            'image_path' => $path,
-                            'created_at' => now(),
-                            'updated_at' => now()
+                \Log::info('Processing medicine images...');
+                \Log::info('Files received:', ['count' => count($request->file('medicine_images'))]);
+                
+                foreach ($request->file('medicine_images') as $key => $image) {
+                    try {
+                        \Log::info("Processing image #$key", [
+                            'original_name' => $image->getClientOriginalName(),
+                            'size' => $image->getSize(),
+                            'mime' => $image->getMimeType(),
+                            'isValid' => $image->isValid() ? 'yes' : 'no'
                         ]);
-                        
-                        $uploadedImages[] = [
-                            'id' => $imageId,
-                            'path' => $path,
-                            'url' => asset('storage/' . $path)
-                        ];
+
+                        if ($image->isValid()) {
+                            // Create dated directory structure
+                            $directory = 'medicine_images/' . date('Y/m/d');
+                            $path = $image->store($directory, 'public');
+                            \Log::info("Image stored at: " . $path);
+
+                            $imageId = DB::table('medicine_images')->insertGetId([
+                                'session_medicine_id' => $sessionMedicine->id,
+                                'image_path' => $path,
+                                'created_at' => now(),
+                                'updated_at' => now()
+                            ]);
+
+                            $uploadedImages[] = [
+                                'id' => $imageId,
+                                'path' => $path,
+                                'url' => asset('storage/' . $path)
+                            ];
+                        } else {
+                            \Log::error('Invalid image file', [
+                                'error' => $image->getError(),
+                                'error_message' => $image->getErrorMessage()
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        \Log::error('Error processing image: ' . $e->getMessage(), [
+                            'trace' => $e->getTraceAsString()
+                        ]);
                     }
                 }
+            } else {
+                \Log::info('No medicine_images found in request');
+                \Log::info('All request files:', $request->allFiles());
             }
             
             // Create payment record for medicine if price is greater than 0
